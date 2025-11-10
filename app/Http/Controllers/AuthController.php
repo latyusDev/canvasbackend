@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\UserRegisterRequest;
 use App\Models\User;
+use GuzzleHttp\Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Laravel\Socialite\Facades\Socialite;
@@ -15,7 +16,11 @@ class AuthController extends Controller
         $userDetails = $request->all();
         $userDetails['password'] = Hash::make($userDetails['password']);
         $user = User::create($userDetails);
-        $this->createToken($user,201);
+        $token = $this->getToken($user);
+        return response([
+            'user'=>$user,
+            'token'=>$token
+        ],201);
     }
 
     public function login(Request $request)
@@ -27,7 +32,11 @@ class AuthController extends Controller
                 'message'=>'user not found'
             ]);
         }
-        $this->createToken($user,200);
+        $token = $this->getToken($user);
+        return response([
+            'user'=>$user,
+            'token'=>$token
+        ],200);
     }
 
     public function redirectToGithub()
@@ -37,17 +46,38 @@ class AuthController extends Controller
 
     public function handleGithubCallback()
     {
-        $githubUser = Socialite::driver('github')->stateless()->user();
-        $getUser = User::whereEmail($githubUser)->first();
-        if(!$getUser){
-            $user = User::create([
-                'name'=>$githubUser->name,
-                'email'=>$githubUser->email
+        // Create Guzzle client with SSL verification disabled
+            $guzzleClient = new Client([
+                'verify' => false, // Only for local development!
+                'timeout' => 30,
             ]);
-            $this->createToken($user,201);
-        }
-        $this->createToken($getUser,201);
+            
+            // Get user from GitHub with custom Guzzle client
+            $githubUser = Socialite::driver('github')
+                ->setHttpClient($guzzleClient)
+                ->stateless()
+                ->user();
+            $getUser = User::whereEmail($githubUser->email)->first();
+            if(!$getUser){
+                $user = User::create([
+                    'name'=>$githubUser->name,
+                    'email'=>$githubUser->email
+                ]);
+                $token = $this->getToken($user);
+                  return response([
+                    'user'=>$user,
+                    'token'=>$token
+                ],201);
+            }
+          \Log::info('GitHub user retrieved', [
+                'email' => $githubUser->getEmail(),
+                'name' => $githubUser->getName(),
+            ]);
+            $token = $this->getToken($getUser);
+            return redirect('http://localhost:5173')
+                  ->cookie('token', $token, 60 * 24, '/', null, false, true);
     }
+    
 
     public function redirectToGoogle()
     {
@@ -56,25 +86,37 @@ class AuthController extends Controller
 
     public function handleGoogleCallback()
     {
-        $googleUser = Socialite::driver('google')->stateless()->user();
+          $guzzleClient = new Client([
+                'verify' => false, // Only for local development!
+                'timeout' => 30,
+            ]);
+            
+        $googleUser = Socialite::driver('google')
+                ->setHttpClient($guzzleClient)
+                ->stateless()
+                ->user();
+                \Log::info('google user',['googleUser'=>$googleUser]);
         $getUser = User::whereEmail($googleUser->email)->first();
          if(!$getUser){
             $user = User::create([
                 'name'=>$googleUser->name,
                 'email'=>$googleUser->email
             ]);
-            $this->createToken($user,201);
+             $token = $this->getToken($user);
+            return response([
+                'user'=>$user,
+                'token'=>$token
+            ],201);
          }
-            $this->createToken($getUser,201);
+           $token = $this->getToken($getUser);
+             return redirect('http://localhost:5173')
+                  ->cookie('token', $token, 60 * 24, '/', null, false, true);
     }
 
-    private function createToken($user,$status)
+    private function getToken($user)
     {
         $token = $user->createToken('latyus')->plainTextToken;
-        return response([
-            'user'=>$user,
-            'token'=>$token
-        ],$status);
+        return $token;
     }
 
 }

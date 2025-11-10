@@ -19,8 +19,6 @@ Route::get('/auth/github/callback', [AuthController::class, 'handleGithubCallbac
 Route::get('/auth/google', [AuthController::class, 'redirectToGoogle']);
 Route::get('/auth/google/callback', [AuthController::class, 'handleGoogleCallback']);
 
-
-
 Route::middleware('auth:sanctum')->group(function(){
     Route::apiResource('/designs',DesignController::class);
 });
